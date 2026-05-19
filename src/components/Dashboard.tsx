@@ -108,7 +108,10 @@ export default function Dashboard({ user }: { user: User }) {
         return;
       }
       
-      const response = await axios.get(`/api/prices?symbols=${symbols}`);
+      const response = await axios.get('/api/prices', { 
+        params: { symbols },
+        headers: { 'Cache-Control': 'no-cache' }
+      });
       setPrices(prev => ({ ...prev, ...response.data }));
     } catch (error) {
       console.error("Error fetching prices", error);
@@ -130,7 +133,7 @@ export default function Dashboard({ user }: { user: User }) {
         setIsSearching(true);
         console.log("[Search] Fetching results for:", newSymbol);
         try {
-          const response = await axios.get(`/api/search?q=${newSymbol}`);
+          const response = await axios.get('/api/search', { params: { q: newSymbol } });
           console.log("[Search] Results received:", response.data);
           setSearchResults(response.data || []);
         } catch (error) {

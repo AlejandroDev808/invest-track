@@ -10,9 +10,12 @@ export const googleProvider = new GoogleAuthProvider();
 
 export const loginWithGoogle = async () => {
   try {
-    await signInWithPopup(auth, googleProvider);
-  } catch (error) {
+    const result = await signInWithPopup(auth, googleProvider);
+    return result;
+  } catch (error: any) {
     console.error("Login failed", error);
+    alert(`Error al iniciar sesión: ${error.message}\n\nNota: Si estás en Vercel o Render, asegúrate de añadir el dominio de tu app en la consola de Firebase: Authentication -> Settings -> Authorized domains.`);
+    throw error;
   }
 };
 
