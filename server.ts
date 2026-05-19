@@ -120,16 +120,50 @@ async function startServer() {
     console.log(`[API] Searching for: "${q}"`);
     if (!q || q.length < 2) return res.json([]);
     
+    // Known fallbacks that are always returned for matching queries
+    const knownCryptoMap = [
+      { symbol: 'BTC-EUR', shortname: 'Bitcoin EUR', quoteType: 'CRYPTOCURRENCY', exchange: 'CCC' },
+      { symbol: 'ETH-EUR', shortname: 'Ethereum EUR', quoteType: 'CRYPTOCURRENCY', exchange: 'CCC' },
+      { symbol: 'SOL-EUR', shortname: 'Solana EUR', quoteType: 'CRYPTOCURRENCY', exchange: 'CCC' },
+      { symbol: 'KAS-USD', shortname: 'Kaspa USD', quoteType: 'CRYPTOCURRENCY', exchange: 'CCC' },
+      { symbol: 'NEAR-USD', shortname: 'NEAR Protocol USD', quoteType: 'CRYPTOCURRENCY', exchange: 'CCC' }
+    ];
+    
+    let baseResults: any[] = [];
+    const upperQ = q.toUpperCase();
+    if (upperQ.includes('BTC') || upperQ.includes('BITCOIN')) baseResults.push(knownCryptoMap[0]);
+    if (upperQ.includes('ETH') || upperQ.includes('ETHEREUM')) baseResults.push(knownCryptoMap[1]);
+    if (upperQ.includes('SOL') || upperQ.includes('SOLANA')) baseResults.push(knownCryptoMap[2]);
+    if (upperQ.includes('KAS') || upperQ.includes('KASPA')) baseResults.push(knownCryptoMap[3]);
+    if (upperQ.includes('NEAR')) baseResults.push(knownCryptoMap[4]);
+    // Also if the user types exactly BTC-EUR, etc
+    if (upperQ === 'BTC-EUR') baseResults = [knownCryptoMap[0]];
+    
     try {
       // Increase count and allow for more broad results
       const result: any = await yf.search(q, { quotesCount: 25, newsCount: 0 });
       console.log(`[API] Found ${result.quotes?.length || 0} quotes for "${q}"`);
       // Filter results that have at least a symbol
-      const filtered = (result.quotes || []).filter((item: any) => item.symbol);
-      res.json(filtered);
+      let filtered = (result.quotes || []).filter((item: any) => item.symbol);
+      
+      // Merge base results, avoiding duplicates
+      const finalResults = [...baseResults];
+      for (const item of filtered) {
+        if (!finalResults.some(r => r.symbol === item.symbol)) {
+          finalResults.push(item);
+        }
+      }
+      
+      res.json(finalResults);
     } catch (error: any) {
-      console.error("Search error:", error);
-      res.status(500).json({ error: "Search failed" });
+      console.error("Search error (Yahoo):", error.message);
+      // In case Yahoo Finance fails (e.g. Render IP block), return at least the base known cryptos if any matched
+      if (baseResults.length > 0) {
+         return res.json(baseResults);
+      }
+      
+      // Fallback: If no base result matched, return a dummy fallback for them to try adding manually
+      res.json([{ symbol: upperQ, shortname: `Manual entry for ${upperQ}`, quoteType: 'UNKNOWN', exchange: 'Manual' }]);
     }
   });
 
