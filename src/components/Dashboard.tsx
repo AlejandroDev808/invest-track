@@ -152,6 +152,14 @@ export default function Dashboard({ user }: { user: User }) {
 
   // Calculations
   const summaries = useMemo<InvestmentSummary[]>(() => {
+    // Calcular el valor total de la cartera primero
+    const totalPortfolioValue = investments.reduce((acc, inv) => {
+      const relevantTx = transactions.filter(tx => tx.investmentId === inv.id);
+      const qty = relevantTx.reduce((a, tx) => a + tx.quantity, 0);
+      const price = inv.type === 'cash' ? 1 : (prices[inv.symbol] || 0);
+      return acc + qty * price;
+    }, 0);
+
     return investments.map(inv => {
       const relevantTx = transactions.filter(tx => tx.investmentId === inv.id);
       const totalQuantity = relevantTx.reduce((acc, tx) => acc + tx.quantity, 0);
@@ -164,6 +172,7 @@ export default function Dashboard({ user }: { user: User }) {
       const currentValue = totalQuantity * currentPrice;
       const netProfit = currentValue - totalInvested;
       const profitPercent = totalInvested > 0 ? (netProfit / totalInvested) * 100 : 0;
+      const portfolioPercent = totalPortfolioValue > 0 ? (currentValue / totalPortfolioValue) * 100 : 0;
 
       return {
         ...inv,
@@ -175,6 +184,7 @@ export default function Dashboard({ user }: { user: User }) {
         currentValue,
         netProfit,
         profitPercent,
+        portfolioPercent,
         hasPrice
       };
     });
@@ -192,9 +202,6 @@ export default function Dashboard({ user }: { user: User }) {
   const chartData = useMemo(() => {
     const grouped = summaries.reduce((acc, s) => {
       if (s.currentValue <= 0) return acc;
-      // Group by symbol, but if it's cash, we might have multiple accounts?
-      // User requested to "aglomerar", so grouping by symbol is fine if they use same symbol.
-      // We'll use the Name for the chart if it's more descriptive, or Symbol if it's stock.
       const label = s.type === 'cash' ? s.name : s.symbol;
       const existing = acc.find(item => item.name === label);
       if (existing) {
@@ -304,11 +311,9 @@ export default function Dashboard({ user }: { user: User }) {
         pricePerUnit: parseFloat(editPrice.replace(',', '.')),
         quantity: parseFloat(editQty.replace(',', '.')),
         commission: parseFloat(editCommission.replace(',', '.')),
-        // Keep original date or update? User might want to keep it.
       }).catch(err => handleFirestoreError(err, OperationType.UPDATE, `transactions/${editingTransaction.id}`));
 
       setEditingTransaction(null);
-      // fetchPrices(); // Not strictly needed unless symbol changed, but good to ensure everything is sync
     } catch (error) {
       console.error("Update failed", error);
       alert("Error al actualizar la transacción");
@@ -771,7 +776,6 @@ export default function Dashboard({ user }: { user: User }) {
                                 key={res.symbol + (res.exchange || '') + idx}
                                 type="button"
                                 onMouseDown={(e) => {
-                                  // Use mousedown to trigger before any potential blur on the input
                                   setNewSymbol(res.symbol);
                                   setNewName(res.longname || res.shortname || res.symbol);
                                   setSearchResults([]);
@@ -1030,6 +1034,12 @@ const InvestmentCard: React.FC<{
               <div className="flex justify-between col-span-2">
                  <span className="text-slate-500">Precio Medio:</span>
                  <span className="font-bold">{formatCurrency(summary.avgPrice)}</span>
+              </div>
+            )}
+            {summary.type !== 'cash' && (
+              <div className="flex justify-between col-span-2">
+                 <span className="text-slate-500">Peso en cartera:</span>
+                 <span className="font-bold">{(summary as any).portfolioPercent?.toFixed(1) ?? '0.0'}%</span>
               </div>
             )}
           </div>
