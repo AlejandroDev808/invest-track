@@ -397,7 +397,7 @@ export default function Dashboard({ user }: { user: User }) {
           </div>
           <div className="flex flex-col gap-2 mt-4 w-full">
             {chartData.map((entry, index) => (
-              <div key={entry.name} className="flex items-center gap-2 overflow-hidden">
+              <div key={entry.name} className="flex items-center gap-2 justify-between">
                 <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
                 <span className="text-[10px] font-bold text-slate-600 truncate">{entry.name}</span>
                 <span className="text-[10px] text-slate-400 shrink-0">{entry.percent.toFixed(1)}%</span>
