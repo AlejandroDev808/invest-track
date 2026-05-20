@@ -19,11 +19,12 @@ export interface Transaction {
 
 export interface InvestmentSummary extends Investment {
   totalQuantity: number;
-  totalInvested: number; // excluding commissions or including? usually invested = qty * price + comm
+  totalInvested: number;
   totalCommission: number;
   avgPrice: number;
   currentPrice: number;
   currentValue: number;
   netProfit: number;
   profitPercent: number;
+  hasPrice?: boolean;
 }

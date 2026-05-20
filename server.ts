@@ -22,6 +22,19 @@ async function startServer() {
     const symbolList = symbolsQuery.split(',').map(s => s.trim().toUpperCase());
     const results: Record<string, number> = {};
 
+    const fetchWithTimeout = async (url: string, options: any = {}, timeout = 5000) => {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), timeout);
+      try {
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        clearTimeout(id);
+        return response;
+      } catch (e) {
+        clearTimeout(id);
+        throw e;
+      }
+    };
+
     const resolveIsin = async (isin: string): Promise<string | null> => {
       try {
         console.log(`[API] Attempting to resolve ISIN: ${isin}`);
@@ -36,7 +49,7 @@ async function startServer() {
         // Fallback to direct search
         try {
           const urlSearch = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(isin)}&quotesCount=1&newsCount=0`;
-          const resSearch = await fetch(urlSearch, {
+          const resSearch = await fetchWithTimeout(urlSearch, {
             headers: {
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
               'Accept': 'application/json',
@@ -62,7 +75,7 @@ async function startServer() {
     const fetchYahooDirect = async (symbol: string): Promise<number | null> => {
       try {
         const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d`;
-        const res = await fetch(url, {
+        const res = await fetchWithTimeout(url, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
             'Accept': '*/*, application/json',
@@ -86,7 +99,7 @@ async function startServer() {
 
     const getEurUsdRate = async (): Promise<number> => {
       try {
-        const res = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+        const res = await fetchWithTimeout('https://api.exchangerate-api.com/v4/latest/USD');
         if (res.ok) {
           const data = await res.json();
           return data.rates.EUR || 0.92; // Fallback to 0.92 if not found
@@ -103,7 +116,7 @@ async function startServer() {
          let clean = symbol.replace(/[-=]/g, '').toUpperCase();
          
          // Try direct pair first
-         let res = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${clean}`);
+         let res = await fetchWithTimeout(`https://api.binance.com/api/v3/ticker/price?symbol=${clean}`);
          if (res.ok) {
            const data = await res.json();
            const price = parseFloat(data.price);
@@ -118,7 +131,7 @@ async function startServer() {
             const base = clean.replace('EUR', '');
             const usdtPair = `${base}USDT`;
             console.log(`[API] Trying Binance USDT fallback for ${symbol} via ${usdtPair}`);
-            const resUsdt = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${usdtPair}`);
+            const resUsdt = await fetchWithTimeout(`https://api.binance.com/api/v3/ticker/price?symbol=${usdtPair}`);
             if (resUsdt.ok) {
               const dataUsdt = await resUsdt.json();
               const usdtPrice = parseFloat(dataUsdt.price);
@@ -134,6 +147,29 @@ async function startServer() {
        return null;
     };
 
+    const fetchCoinCapPrice = async (symbol: string): Promise<number | null> => {
+      try {
+        const mapping: Record<string, string> = {
+          'KAS': 'kaspa', 'KASPA': 'kaspa', 'NEAR': 'near-protocol', 'BTC': 'bitcoin', 'ETH': 'ethereum', 'SOL': 'solana'
+        };
+        const base = symbol.split(/[-=]/)[0].toUpperCase();
+        const id = mapping[base] || base.toLowerCase();
+        
+        const res = await fetchWithTimeout(`https://api.coincap.io/v2/assets/${id}`);
+        if (res.ok) {
+          const data = await res.json();
+          const priceUsd = parseFloat(data.data.priceUsd);
+          if (!isNaN(priceUsd)) {
+            const rate = await getEurUsdRate();
+            const converted = priceUsd * rate;
+            console.log(`[API] CoinCap success for ${symbol}: ${priceUsd} USD -> ${converted} EUR`);
+            return converted;
+          }
+        }
+      } catch (e) {}
+      return null;
+    };
+
     const fetchCoinGeckoPrice = async (symbol: string): Promise<number | null> => {
       try {
         const mapping: Record<string, string> = {
@@ -147,7 +183,7 @@ async function startServer() {
         const cgId = mapping[baseSymbol] || baseSymbol.toLowerCase();
         
         console.log(`[API] CoinGecko fallback for ${symbol}: ID=${cgId}, Currency=${currency}`);
-        const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${cgId}&vs_currencies=${currency}`);
+        const response = await fetchWithTimeout(`https://api.coingecko.com/api/v3/simple/price?ids=${cgId}&vs_currencies=${currency}`, {}, 6000);
         
         if (response.status === 429) {
           console.error(`[API] CoinGecko throttled for ${symbol}`);
@@ -156,7 +192,11 @@ async function startServer() {
 
         const data: any = await response.json();
         const price = data[cgId]?.[currency];
-        return price || null;
+        if (price) {
+          console.log(`[API] CoinGecko success for ${symbol}: ${price}`);
+          return price;
+        }
+        return null;
       } catch (err) {
         console.error(`[API] CoinGecko fallback failed:`, (err as any).message);
         return null;
@@ -164,17 +204,23 @@ async function startServer() {
     };
 
     const getPriceWithFallbacks = async (sym: string): Promise<number | null> => {
-       // 1. Try Yahoo Direct Fetch (Commonly works better on Render and avoids yf.quote issue)
+       // 1. Try Yahoo Direct Fetch
        const yDirect = await fetchYahooDirect(sym);
        if (yDirect !== null) return yDirect;
 
-       // 2. Try Binance (For Cryptos - handles conversion EUR/USD)
+       // 2. Try Binance
        if (sym.includes('-') || sym.includes('=') || ['BTC', 'ETH', 'SOL', 'KAS', 'NEAR'].some(c => sym.includes(c))) {
          const bPrice = await fetchBinancePrice(sym);
          if (bPrice !== null) return bPrice;
        }
 
-       // 3. Try CoinGecko
+       // 3. Try CoinCap (New Fallback)
+       if (['KAS', 'NEAR', 'BTC', 'ETH', 'SOL'].some(c => sym.includes(c))) {
+         const cpPrice = await fetchCoinCapPrice(sym);
+         if (cpPrice !== null) return cpPrice;
+       }
+
+       // 4. Try CoinGecko
        const cgPrice = await fetchCoinGeckoPrice(sym);
        if (cgPrice !== null) return cgPrice;
 

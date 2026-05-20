@@ -159,6 +159,7 @@ export default function Dashboard({ user }: { user: User }) {
       const totalCommission = relevantTx.reduce((acc, tx) => acc + tx.commission, 0);
       const avgPrice = totalQuantity > 0 ? (totalInvested - totalCommission) / totalQuantity : 0;
       
+      const hasPrice = inv.type === 'cash' || prices[inv.symbol] !== undefined;
       const currentPrice = inv.type === 'cash' ? 1 : (prices[inv.symbol] || avgPrice);
       const currentValue = totalQuantity * currentPrice;
       const netProfit = currentValue - totalInvested;
@@ -173,7 +174,8 @@ export default function Dashboard({ user }: { user: User }) {
         currentPrice,
         currentValue,
         netProfit,
-        profitPercent
+        profitPercent,
+        hasPrice
       };
     });
   }, [investments, transactions, prices]);
@@ -1000,10 +1002,16 @@ const InvestmentCard: React.FC<{
            </div>
            <div className="text-right">
               <p className="text-[10px] font-bold text-slate-400 uppercase">Resultado</p>
-              <div className={cn("flex items-baseline justify-end gap-1 font-bold", summary.netProfit >= 0 ? "text-emerald-600" : "text-rose-600")}>
-                <span className="text-lg">{formatCurrency(summary.netProfit)}</span>
-                <span className="text-xs">({formatPercent(summary.profitPercent)})</span>
-              </div>
+              {!summary.hasPrice && summary.type !== 'cash' ? (
+                <div className="flex items-baseline justify-end gap-1 font-bold text-slate-400">
+                  <span className="text-lg">--</span>
+                </div>
+              ) : (
+                <div className={cn("flex items-baseline justify-end gap-1 font-bold", summary.netProfit >= 0 ? "text-emerald-600" : "text-rose-600")}>
+                  <span className="text-lg">{formatCurrency(summary.netProfit)}</span>
+                  <span className="text-xs">({formatPercent(summary.profitPercent)})</span>
+                </div>
+              )}
            </div>
         </div>
 
@@ -1029,9 +1037,9 @@ const InvestmentCard: React.FC<{
       <div className="bg-slate-50 px-5 py-3 flex justify-between items-center">
          <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400">
             <Info size={10} />
-            <span>{summary.type === 'cash' ? 'ACTIVO LÍQUIDO' : `PRECIO MERCADO: ${formatCurrency(summary.currentPrice)}`}</span>
+            <span>{summary.type === 'cash' ? 'ACTIVO LÍQUIDO' : `PRECIO MERCADO: ${summary.hasPrice ? formatCurrency(summary.currentPrice) : '--'}`}</span>
          </div>
-         <div className={cn("w-2 h-2 rounded-full", summary.netProfit >= 0 ? "bg-emerald-500" : (summary.type === 'cash' ? "bg-blue-400" : "bg-rose-500 animate-pulse"))} />
+         <div className={cn("w-2 h-2 rounded-full", (summary.hasPrice || summary.type === 'cash') ? (summary.netProfit >= 0 ? "bg-emerald-500" : "bg-rose-500") : "bg-slate-300 animate-pulse")} />
       </div>
     </motion.div>
   );
