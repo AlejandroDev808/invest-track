@@ -395,7 +395,7 @@ export default function Dashboard({ user }: { user: User }) {
               </PieChart>
             </ResponsiveContainer>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-4 w-full">
+          <div className="flex flex-col gap-2 mt-4 w-full">
             {chartData.map((entry, index) => (
               <div key={entry.name} className="flex items-center gap-2 overflow-hidden">
                 <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
