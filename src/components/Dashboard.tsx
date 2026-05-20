@@ -401,6 +401,9 @@ export default function Dashboard({ user }: { user: User }) {
                 <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
                 <span className="text-[10px] font-bold text-slate-600 truncate">{entry.name}</span>
                 <span className="text-[10px] text-slate-400 shrink-0">{entry.percent.toFixed(1)}%</span>
+                <span className={cn("text-[10px] font-semibold shrink-0", (summaries.find(s => (s.type === 'cash' ? s.name : s.symbol) === entry.name)?.netProfit ?? 0) >= 0 ? "text-emerald-500" : "text-rose-500")}>
+                {formatCurrency(summaries.find(s => (s.type === 'cash' ? s.name : s.symbol) === entry.name)?.netProfit ?? 0)}
+                </span>
               </div>
             ))}
           </div>
