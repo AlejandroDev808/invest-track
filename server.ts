@@ -2,11 +2,8 @@ import express from "express";
 import path from "path";
 import YahooFinance from 'yahoo-finance2';
 
-// In v3, we usually need to instantiate the class. 
-// However, depending on the environment and bundling, the default export might be the instance or the class.
-const yf = typeof YahooFinance === 'function' 
-  ? new (YahooFinance as any)() 
-  : YahooFinance;
+// Standard handling for different bundle/import styles
+const yf: any = (YahooFinance as any).default || YahooFinance;
 
 async function startServer() {
   const app = express();
@@ -35,14 +32,14 @@ async function startServer() {
           return res;
         }
       } catch (err) {
-        console.error(`ISIN resolution error for ${isin}:`, err);
+        console.error(`ISIN resolution error for ${isin}:`, (err as any).message);
         // Fallback to direct search
         try {
           const urlSearch = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(isin)}&quotesCount=1&newsCount=0`;
           const resSearch = await fetch(urlSearch, {
             headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              'Accept': '*/*, application/json',
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+              'Accept': 'application/json',
               'Origin': 'https://finance.yahoo.com',
               'Referer': 'https://finance.yahoo.com/'
             }
@@ -56,7 +53,7 @@ async function startServer() {
             }
           }
         } catch (errDirect) {
-          console.error(`ISIN direct resolution error for ${isin}:`, errDirect);
+          console.error(`ISIN direct resolution error for ${isin}:`, (errDirect as any).message);
         }
       }
       return null;
@@ -67,7 +64,7 @@ async function startServer() {
         const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d`;
         const res = await fetch(url, {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
             'Accept': '*/*, application/json',
             'Origin': 'https://finance.yahoo.com',
             'Referer': 'https://finance.yahoo.com/'
@@ -87,6 +84,23 @@ async function startServer() {
       return null;
     };
 
+    const fetchBinancePrice = async (symbol: string): Promise<number | null> => {
+       try {
+         // Convert Yahoo style BTC-EUR to BTCEUR
+         const clean = symbol.replace(/[-=]/g, '').toUpperCase();
+         const res = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${clean}`);
+         if (res.ok) {
+           const data = await res.json();
+           const price = parseFloat(data.price);
+           if (!isNaN(price)) {
+             console.log(`[API] Binance success for ${symbol}: ${price}`);
+             return price;
+           }
+         }
+       } catch (e) {}
+       return null;
+    };
+
     const fetchCoinGeckoPrice = async (symbol: string): Promise<number | null> => {
       try {
         const mapping: Record<string, string> = {
@@ -101,89 +115,59 @@ async function startServer() {
         
         console.log(`[API] CoinGecko fallback for ${symbol}: ID=${cgId}, Currency=${currency}`);
         const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${cgId}&vs_currencies=${currency}`);
-        const data: any = await response.json();
         
+        if (response.status === 429) {
+          console.error(`[API] CoinGecko throttled for ${symbol}`);
+          return null;
+        }
+
+        const data: any = await response.json();
         const price = data[cgId]?.[currency];
         return price || null;
       } catch (err) {
-        console.error(`[API] CoinGecko fallback failed:`, err);
+        console.error(`[API] CoinGecko fallback failed:`, (err as any).message);
         return null;
       }
     };
 
-    try {
-      const quotes: any = await yf.quote(symbolList);
-      const quoteArray = Array.isArray(quotes) ? quotes : [quotes];
-      
-      for (const sym of symbolList) {
-        let currentSym = sym;
-        const q = quoteArray.find(item => item && item.symbol === currentSym);
-        
-        if (q && q.regularMarketPrice) {
-          results[sym] = q.regularMarketPrice;
-        } else {
-          // If sym looks like an ISIN, try resolving it
-          if (sym.length === 12 && /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(sym)) {
-            const resolved = await resolveIsin(sym);
-            if (resolved) {
-               try {
-                 const rq: any = await yf.quote(resolved);
-                 if (rq && rq.regularMarketPrice) {
-                    results[sym] = rq.regularMarketPrice;
-                    continue;
-                 }
-               } catch (e) {}
-               const rsDirect = await fetchYahooDirect(resolved);
-               if (rsDirect !== null) {
-                 results[sym] = rsDirect;
-                 continue;
-               }
-            }
-          }
-          let fallbackPrice = await fetchYahooDirect(sym);
-          if (fallbackPrice === null) fallbackPrice = await fetchCoinGeckoPrice(sym);
-          if (fallbackPrice !== null) results[sym] = fallbackPrice;
-        }
-      }
-      res.json(results);
-    } catch (error) {
-      console.error("Price fetch error:", error);
-      for (const sym of symbolList) {
-        try {
-          const q: any = await yf.quote(sym);
-          if (q && q.regularMarketPrice) {
-            results[sym] = q.regularMarketPrice;
-          } else {
-            // Check ISIN fallback in catch block too
-            if (sym.length === 12 && /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(sym)) {
-              const resIsin = await resolveIsin(sym);
-              if (resIsin) {
-                try {
-                  const rq: any = await yf.quote(resIsin);
-                  if (rq && rq.regularMarketPrice) {
-                     results[sym] = rq.regularMarketPrice;
-                     continue;
-                  }
-                } catch (e) {}
-                const rsDirect = await fetchYahooDirect(resIsin);
-                if (rsDirect !== null) {
-                  results[sym] = rsDirect;
-                  continue;
-                }
-              }
-            }
-            let fp = await fetchYahooDirect(sym);
-            if (fp === null) fp = await fetchCoinGeckoPrice(sym);
-            if (fp !== null) results[sym] = fp;
-          }
-        } catch (e) {
-          let fp = await fetchYahooDirect(sym);
-          if (fp === null) fp = await fetchCoinGeckoPrice(sym);
-          if (fp !== null) results[sym] = fp;
-        }
-      }
-      res.json(results);
+    const getPriceWithFallbacks = async (sym: string): Promise<number | null> => {
+       // 1. Try Yahoo Finance Library
+       try {
+         if (yf && typeof yf.quote === 'function') {
+           const q: any = await yf.quote(sym);
+           if (q && q.regularMarketPrice) return q.regularMarketPrice;
+         }
+       } catch (e) {}
+
+       // 2. Try Yahoo Direct Fetch (Commonly works better on Render)
+       const yDirect = await fetchYahooDirect(sym);
+       if (yDirect !== null) return yDirect;
+
+       // 3. Try Binance (For Cryptos)
+       if (sym.includes('-') || sym.includes('=') || ['BTC', 'ETH', 'SOL', 'KAS', 'NEAR'].some(c => sym.includes(c))) {
+         const bPrice = await fetchBinancePrice(sym);
+         if (bPrice !== null) return bPrice;
+       }
+
+       // 4. Try CoinGecko
+       const cgPrice = await fetchCoinGeckoPrice(sym);
+       if (cgPrice !== null) return cgPrice;
+
+       return null;
+    };
+
+    for (const sym of symbolList) {
+       let resolvedSym = sym;
+       // Handle ISIN resolution
+       if (sym.length === 12 && /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(sym)) {
+         resolvedSym = await resolveIsin(sym) || sym;
+       }
+
+       const price = await getPriceWithFallbacks(resolvedSym);
+       if (price !== null) results[sym] = price;
     }
+
+    res.json(results);
   });
 
   app.get("/api/search", async (req, res) => {
