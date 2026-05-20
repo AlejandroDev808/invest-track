@@ -36,6 +36,53 @@ async function startServer() {
         }
       } catch (err) {
         console.error(`ISIN resolution error for ${isin}:`, err);
+        // Fallback to direct search
+        try {
+          const urlSearch = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(isin)}&quotesCount=1&newsCount=0`;
+          const resSearch = await fetch(urlSearch, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Accept': '*/*, application/json',
+              'Origin': 'https://finance.yahoo.com',
+              'Referer': 'https://finance.yahoo.com/'
+            }
+          });
+          if (resSearch.ok) {
+            const data = await resSearch.json();
+            if (data?.quotes && data.quotes.length > 0 && data.quotes[0].symbol) {
+               const resDirect = data.quotes[0].symbol;
+               console.log(`[API] Resolved ${isin} to ${resDirect} via direct fetch`);
+               return resDirect;
+            }
+          }
+        } catch (errDirect) {
+          console.error(`ISIN direct resolution error for ${isin}:`, errDirect);
+        }
+      }
+      return null;
+    };
+
+    const fetchYahooDirect = async (symbol: string): Promise<number | null> => {
+      try {
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d`;
+        const res = await fetch(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': '*/*, application/json',
+            'Origin': 'https://finance.yahoo.com',
+            'Referer': 'https://finance.yahoo.com/'
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+          if (typeof price === 'number') {
+            console.log(`[API] Direct Yahoo API success for ${symbol}: ${price}`);
+            return price;
+          }
+        }
+      } catch (e: any) {
+        console.error(`[API] Direct Yahoo API failed for ${symbol}:`, e.message);
       }
       return null;
     };
@@ -86,9 +133,15 @@ async function startServer() {
                     continue;
                  }
                } catch (e) {}
+               const rsDirect = await fetchYahooDirect(resolved);
+               if (rsDirect !== null) {
+                 results[sym] = rsDirect;
+                 continue;
+               }
             }
           }
-          const fallbackPrice = await fetchCoinGeckoPrice(sym);
+          let fallbackPrice = await fetchYahooDirect(sym);
+          if (fallbackPrice === null) fallbackPrice = await fetchCoinGeckoPrice(sym);
           if (fallbackPrice !== null) results[sym] = fallbackPrice;
         }
       }
@@ -105,18 +158,27 @@ async function startServer() {
             if (sym.length === 12 && /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(sym)) {
               const resIsin = await resolveIsin(sym);
               if (resIsin) {
-                const rq: any = await yf.quote(resIsin);
-                if (rq && rq.regularMarketPrice) {
-                   results[sym] = rq.regularMarketPrice;
-                   continue;
+                try {
+                  const rq: any = await yf.quote(resIsin);
+                  if (rq && rq.regularMarketPrice) {
+                     results[sym] = rq.regularMarketPrice;
+                     continue;
+                  }
+                } catch (e) {}
+                const rsDirect = await fetchYahooDirect(resIsin);
+                if (rsDirect !== null) {
+                  results[sym] = rsDirect;
+                  continue;
                 }
               }
             }
-            const fp = await fetchCoinGeckoPrice(sym);
+            let fp = await fetchYahooDirect(sym);
+            if (fp === null) fp = await fetchCoinGeckoPrice(sym);
             if (fp !== null) results[sym] = fp;
           }
         } catch (e) {
-          const fp = await fetchCoinGeckoPrice(sym);
+          let fp = await fetchYahooDirect(sym);
+          if (fp === null) fp = await fetchCoinGeckoPrice(sym);
           if (fp !== null) results[sym] = fp;
         }
       }
@@ -176,7 +238,35 @@ async function startServer() {
       
       res.json(finalResults);
     } catch (error: any) {
-      console.error("Search error (Yahoo):", error.message);
+      console.error("Search error (Yahoo yf2):", error.message);
+      
+      try {
+        console.log(`[API] Attempting direct Yahoo search fallback for "${q}"...`);
+        const urlSearch = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=10&newsCount=0`;
+        const resSearch = await fetch(urlSearch, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': '*/*, application/json',
+            'Origin': 'https://finance.yahoo.com',
+            'Referer': 'https://finance.yahoo.com/'
+          }
+        });
+        if (resSearch.ok) {
+          const directData = await resSearch.json();
+          let directQuotes = (directData.quotes || []).filter((item: any) => item.symbol);
+          if (directQuotes.length > 0) {
+            const finalDirectResults = [...baseResults];
+            for (const item of directQuotes) {
+              if (!finalDirectResults.some(r => r.symbol === item.symbol)) {
+                finalDirectResults.push(item);
+              }
+            }
+            return res.json(finalDirectResults);
+          }
+        }
+      } catch (errDirect) {
+        console.error("Direct Yahoo search fallback error:", errDirect);
+      }
       
       try {
         console.log(`[API] Attempting CoinGecko search fallback for "${q}"...`);
