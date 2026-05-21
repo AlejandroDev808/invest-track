@@ -72,6 +72,9 @@ export default function Dashboard({ user }: { user: User }) {
   const [editQty, setEditQty] = useState('');
   const [editCommission, setEditCommission] = useState('');
 
+  // Patrimonio inmobiliario (recibido desde PropertySection)
+  const [propertyEquity, setPropertyEquity] = useState<number>(0);
+
   // Search states
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -753,7 +756,7 @@ export default function Dashboard({ user }: { user: User }) {
         )}
 
       {/* Patrimonio Inmobiliario */}
-      <PropertySection user={user} />
+      <PropertySection user={user} onEquityChange={setPropertyEquity} />
 
       {/* Add Modal */}
       <AnimatePresence>
@@ -927,6 +930,11 @@ export default function Dashboard({ user }: { user: User }) {
           </div>
         )}
       </AnimatePresence>
+      {/* Banner Patrimonio Total */}
+      <TotalWealthBanner
+        investmentValue={globalStats.currentValue}
+        propertyEquity={propertyEquity}
+      />
     </div>
   );
 }
@@ -1081,5 +1089,44 @@ const InvestmentCard: React.FC<{
          <div className={cn("w-2 h-2 rounded-full", (summary.hasPrice || summary.type === 'cash') ? (summary.netProfit >= 0 ? "bg-emerald-500" : "bg-rose-500") : "bg-slate-300 animate-pulse")} />
       </div>
     </motion.div>
+  );
+}
+
+// ─── Banner Patrimonio Total ──────────────────────────────────────────────────
+
+function TotalWealthBanner({
+  investmentValue,
+  propertyEquity,
+}: {
+  investmentValue: number;
+  propertyEquity: number;
+}) {
+  const total = investmentValue + propertyEquity;
+
+  return (
+    <div className="bg-slate-900 rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div>
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
+          Patrimonio Neto Total
+        </p>
+        <p className="text-3xl font-black text-white tracking-tight">
+          {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(total)}
+        </p>
+      </div>
+      <div className="flex gap-6 sm:gap-8">
+        <div className="text-right">
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Inversiones</p>
+          <p className="text-lg font-bold text-slate-200">
+            {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(investmentValue)}
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Inmobiliario</p>
+          <p className="text-lg font-bold text-slate-200">
+            {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(propertyEquity)}
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }
