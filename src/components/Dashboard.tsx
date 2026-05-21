@@ -6,6 +6,7 @@ import { Investment, Transaction, InvestmentSummary } from '../types';
 import { cn, formatCurrency, formatPercent } from '../lib/utils';
 import { Plus, TrendingUp, TrendingDown, Trash2, PieChart as PieChartIcon, Info, RefreshCcw, Landmark, Coins, Briefcase, History, Edit2, X, Calendar, Wallet } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import StatsTable from './StatsTable';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import axios from 'axios';
 
@@ -409,6 +410,11 @@ export default function Dashboard({ user }: { user: User }) {
           </div>
         </div>
       </div>
+
+      {/* Stats Table */}
+      {summaries.length > 0 && (
+        <StatsTable summaries={summaries} />
+      )}
 
       {/* Main List */}
       <div className="space-y-4">
