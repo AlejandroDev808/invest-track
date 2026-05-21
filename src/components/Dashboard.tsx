@@ -7,6 +7,7 @@ import { cn, formatCurrency, formatPercent } from '../lib/utils';
 import { Plus, TrendingUp, TrendingDown, Trash2, PieChart as PieChartIcon, Info, RefreshCcw, Landmark, Coins, Briefcase, History, Edit2, X, Calendar, Wallet } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import StatsTable from './StatsTable';
+import PropertySection from './PropertySection';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import axios from 'axios';
 
@@ -750,6 +751,9 @@ export default function Dashboard({ user }: { user: User }) {
             </motion.div>
           </div>
         )}
+
+      {/* Patrimonio Inmobiliario */}
+      <PropertySection user={user} />
 
       {/* Add Modal */}
       <AnimatePresence>
