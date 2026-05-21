@@ -249,18 +249,34 @@ export default function Dashboard({ user }: { user: User }) {
       }
 
       console.log("[Add] Attempting to add investment:", { symbol, name, newType });
-      const invRef = await addDoc(collection(db, 'investments'), {
-        symbol: symbol,
-        name: name,
-        type: newType,
-        ownerId: user.uid,
-        createdAt: serverTimestamp()
-      }).catch(err => handleFirestoreError(err, OperationType.CREATE, 'investments'));
 
-      if (!invRef) throw new Error("Failed to create investment document");
+      // Buscar si ya existe un investment con el mismo símbolo para este usuario
+      const existingInv = investments.find(
+        inv => inv.symbol === symbol && inv.ownerId === user.uid
+      );
+
+      let investmentId: string;
+
+      if (existingInv) {
+        // Reutilizar el investment existente — solo añadir la transacción
+        console.log("[Add] Investment ya existe, reutilizando:", existingInv.id);
+        investmentId = existingInv.id;
+      } else {
+        // Crear un nuevo investment
+        const invRef = await addDoc(collection(db, 'investments'), {
+          symbol: symbol,
+          name: name,
+          type: newType,
+          ownerId: user.uid,
+          createdAt: serverTimestamp()
+        }).catch(err => handleFirestoreError(err, OperationType.CREATE, 'investments'));
+
+        if (!invRef) throw new Error("Failed to create investment document");
+        investmentId = invRef.id;
+      }
 
       await addDoc(collection(db, 'transactions'), {
-        investmentId: invRef.id,
+        investmentId: investmentId,
         pricePerUnit: parsedPrice,
         quantity: parsedQty,
         commission: isNaN(parsedCommission) ? 0 : parsedCommission,
