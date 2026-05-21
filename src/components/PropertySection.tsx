@@ -36,7 +36,7 @@ const EMPTY_FORM = {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export default function PropertySection({ user }: { user: User }) {
+export default function PropertySection({ user, onEquityChange }: { user: User; onEquityChange?: (equity: number) => void }) {
   const [properties, setProperties] = useState<Property[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
@@ -56,6 +56,12 @@ export default function PropertySection({ user }: { user: User }) {
   }, [user.uid]);
 
   const stats = useMemo(() => properties.map(computeStats), [properties]);
+
+  // Notificar al padre cuando cambia el patrimonio neto inmobiliario
+  useEffect(() => {
+    const totalEquity = stats.reduce((acc, s) => acc + s.equity, 0);
+    onEquityChange?.(totalEquity);
+  }, [stats, onEquityChange]);
 
   // Totales
   const totals = useMemo(() => {
