@@ -4,7 +4,7 @@ import { User } from 'firebase/auth';
 import { db } from '../lib/firebase';
 import { Property, PropertyStats } from '../types';
 import { cn, formatCurrency, formatPercent } from '../lib/utils';
-import { Plus, Home, Trash2, Edit2, X, TrendingUp, TrendingDown, RefreshCcw, Building2 } from 'lucide-react';
+import { Plus, Home, Trash2, Edit2, X, TrendingUp, TrendingDown, RefreshCcw, Building2, ArrowUpDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 // ─── Cálculos ─────────────────────────────────────────────────────────────────
@@ -20,7 +20,36 @@ function computeStats(property: Property): PropertyStats {
   const ltv =
     property.appraisalValue > 0 ? (debtRemaining / property.appraisalValue) * 100 : 0;
 
-  return { property, debtRemaining, equity, appreciation, appreciationPercent, ltv };
+  const monthlyIncome = property.monthlyRent ?? 0;
+  const monthlyExpenses =
+    (property.hasHypothec ? property.monthlyPayment : 0) +
+    (property.monthlyInsurance ?? 0) +
+    (property.monthlyCommunity ?? 0);
+  const monthlyCashflow = monthlyIncome - monthlyExpenses;
+  const annualCashflow = monthlyCashflow * 12;
+  const grossYield =
+    property.purchasePrice > 0
+      ? ((monthlyIncome * 12) / property.purchasePrice) * 100
+      : 0;
+  const netYield =
+    property.purchasePrice > 0
+      ? (annualCashflow / property.purchasePrice) * 100
+      : 0;
+
+  return {
+    property,
+    debtRemaining,
+    equity,
+    appreciation,
+    appreciationPercent,
+    ltv,
+    monthlyIncome,
+    monthlyExpenses,
+    monthlyCashflow,
+    annualCashflow,
+    grossYield,
+    netYield,
+  };
 }
 
 // ─── Formulario vacío ─────────────────────────────────────────────────────────
@@ -32,23 +61,28 @@ const EMPTY_FORM = {
   hasHypothec: false,
   monthlyPayment: '',
   monthsRemaining: '',
+  monthlyRent: '',
+  monthlyInsurance: '',
+  monthlyCommunity: '',
 };
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export default function PropertySection({ user, onEquityChange }: { user: User; onEquityChange?: (equity: number) => void }) {
+export default function PropertySection({
+  user,
+  onEquityChange,
+}: {
+  user: User;
+  onEquityChange?: (equity: number) => void;
+}) {
   const [properties, setProperties] = useState<Property[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
 
-  // Cargar inmuebles desde Firestore
   useEffect(() => {
-    const q = query(
-      collection(db, 'properties'),
-      where('ownerId', '==', user.uid)
-    );
+    const q = query(collection(db, 'properties'), where('ownerId', '==', user.uid));
     const unsub = onSnapshot(q, snapshot => {
       setProperties(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Property)));
     });
@@ -57,13 +91,11 @@ export default function PropertySection({ user, onEquityChange }: { user: User; 
 
   const stats = useMemo(() => properties.map(computeStats), [properties]);
 
-  // Notificar al padre cuando cambia el patrimonio neto inmobiliario
   useEffect(() => {
     const totalEquity = stats.reduce((acc, s) => acc + s.equity, 0);
     onEquityChange?.(totalEquity);
   }, [stats, onEquityChange]);
 
-  // Totales
   const totals = useMemo(() => {
     const totalAppraisal = stats.reduce((acc, s) => acc + s.property.appraisalValue, 0);
     const totalDebt = stats.reduce((acc, s) => acc + s.debtRemaining, 0);
@@ -71,7 +103,17 @@ export default function PropertySection({ user, onEquityChange }: { user: User; 
     const totalPurchase = stats.reduce((acc, s) => acc + s.property.purchasePrice, 0);
     const totalAppreciation = totalAppraisal - totalPurchase;
     const totalAppreciationPct = totalPurchase > 0 ? (totalAppreciation / totalPurchase) * 100 : 0;
-    return { totalAppraisal, totalDebt, totalEquity, totalAppreciation, totalAppreciationPct };
+    const totalMonthlyCashflow = stats.reduce((acc, s) => acc + s.monthlyCashflow, 0);
+    const totalAnnualCashflow = totalMonthlyCashflow * 12;
+    return {
+      totalAppraisal,
+      totalDebt,
+      totalEquity,
+      totalAppreciation,
+      totalAppreciationPct,
+      totalMonthlyCashflow,
+      totalAnnualCashflow,
+    };
   }, [stats]);
 
   const openAdd = () => {
@@ -89,6 +131,9 @@ export default function PropertySection({ user, onEquityChange }: { user: User; 
       hasHypothec: p.hasHypothec,
       monthlyPayment: p.monthlyPayment.toString(),
       monthsRemaining: p.monthsRemaining.toString(),
+      monthlyRent: (p.monthlyRent ?? 0).toString(),
+      monthlyInsurance: (p.monthlyInsurance ?? 0).toString(),
+      monthlyCommunity: (p.monthlyCommunity ?? 0).toString(),
     });
     setShowModal(true);
   };
@@ -105,6 +150,9 @@ export default function PropertySection({ user, onEquityChange }: { user: User; 
         hasHypothec: form.hasHypothec,
         monthlyPayment: form.hasHypothec ? parseFloat(form.monthlyPayment.replace(',', '.')) : 0,
         monthsRemaining: form.hasHypothec ? parseInt(form.monthsRemaining) : 0,
+        monthlyRent: parseFloat(form.monthlyRent.replace(',', '.')) || 0,
+        monthlyInsurance: parseFloat(form.monthlyInsurance.replace(',', '.')) || 0,
+        monthlyCommunity: parseFloat(form.monthlyCommunity.replace(',', '.')) || 0,
       };
 
       if (editingProperty) {
@@ -136,9 +184,10 @@ export default function PropertySection({ user, onEquityChange }: { user: User; 
     await deleteDoc(doc(db, 'properties', id));
   };
 
-  const f = (key: keyof typeof EMPTY_FORM) => (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => setForm(prev => ({ ...prev, [key]: e.target.value }));
+  const f =
+    (key: keyof typeof EMPTY_FORM) =>
+    (e: React.ChangeEvent<HTMLInputElement>) =>
+      setForm(prev => ({ ...prev, [key]: e.target.value }));
 
   return (
     <div className="space-y-4">
@@ -150,7 +199,7 @@ export default function PropertySection({ user, onEquityChange }: { user: User; 
           </div>
           <div>
             <h2 className="text-xl font-bold tracking-tight">Patrimonio Inmobiliario</h2>
-            <p className="text-xs text-slate-400 font-medium">Inmuebles y su hipoteca asociada</p>
+            <p className="text-xs text-slate-400 font-medium">Inmuebles, hipoteca y rentabilidad del alquiler</p>
           </div>
         </div>
         <button
@@ -163,22 +212,32 @@ export default function PropertySection({ user, onEquityChange }: { user: User; 
         </button>
       </div>
 
-      {/* Tarjetas de resumen global */}
+      {/* Tarjetas resumen global */}
       {stats.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <SummaryCard label="Valor Total Tasación" value={formatCurrency(totals.totalAppraisal)} color="blue" />
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <SummaryCard label="Valor Tasación" value={formatCurrency(totals.totalAppraisal)} color="blue" />
           <SummaryCard label="Deuda Total" value={formatCurrency(totals.totalDebt)} color="rose" />
           <SummaryCard label="Patrimonio Neto" value={formatCurrency(totals.totalEquity)} color="emerald" />
           <SummaryCard
-            label="Plusvalía Total"
+            label="Plusvalía"
             value={formatCurrency(totals.totalAppreciation)}
             sub={`${totals.totalAppreciation >= 0 ? '+' : ''}${formatPercent(totals.totalAppreciationPct)}`}
             color={totals.totalAppreciation >= 0 ? 'emerald' : 'rose'}
           />
+          <SummaryCard
+            label="Flujo Mensual"
+            value={formatCurrency(totals.totalMonthlyCashflow)}
+            color={totals.totalMonthlyCashflow >= 0 ? 'emerald' : 'rose'}
+          />
+          <SummaryCard
+            label="Flujo Anual"
+            value={formatCurrency(totals.totalAnnualCashflow)}
+            color={totals.totalAnnualCashflow >= 0 ? 'emerald' : 'rose'}
+          />
         </div>
       )}
 
-      {/* Lista de inmuebles */}
+      {/* Lista */}
       {stats.length === 0 ? (
         <div className="bg-white border border-dashed border-slate-300 rounded-2xl p-12 text-center space-y-4">
           <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto text-slate-300">
@@ -204,7 +263,7 @@ export default function PropertySection({ user, onEquityChange }: { user: User; 
         </div>
       )}
 
-      {/* Modal añadir / editar */}
+      {/* Modal */}
       <AnimatePresence>
         {showModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
@@ -212,7 +271,7 @@ export default function PropertySection({ user, onEquityChange }: { user: User; 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5"
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5 max-h-[90vh] overflow-y-auto"
             >
               <div className="flex justify-between items-center">
                 <h3 className="text-xl font-bold">
@@ -224,7 +283,6 @@ export default function PropertySection({ user, onEquityChange }: { user: User; 
               </div>
 
               <form onSubmit={handleSave} className="space-y-4">
-                {/* Nombre */}
                 <Field label="Nombre del inmueble">
                   <input
                     required
@@ -237,89 +295,44 @@ export default function PropertySection({ user, onEquityChange }: { user: User; 
 
                 <div className="grid grid-cols-2 gap-4">
                   <Field label="Precio de compra (€)">
-                    <input
-                      required
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="150000"
-                      value={form.purchasePrice}
-                      onChange={f('purchasePrice')}
-                      className={inputCls}
-                    />
+                    <input required type="number" step="0.01" min="0" placeholder="150000"
+                      value={form.purchasePrice} onChange={f('purchasePrice')} className={inputCls} />
                   </Field>
-                  <Field label="Valor tasación actual (€)">
-                    <input
-                      required
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="180000"
-                      value={form.appraisalValue}
-                      onChange={f('appraisalValue')}
-                      className={inputCls}
-                    />
+                  <Field label="Valor tasación (€)">
+                    <input required type="number" step="0.01" min="0" placeholder="180000"
+                      value={form.appraisalValue} onChange={f('appraisalValue')} className={inputCls} />
                   </Field>
                 </div>
 
-                {/* Toggle hipoteca */}
+                {/* Hipoteca */}
                 <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <input
-                    type="checkbox"
-                    id="hasHypothec"
-                    checked={form.hasHypothec}
+                  <input type="checkbox" id="hasHypothec" checked={form.hasHypothec}
                     onChange={e => setForm(prev => ({ ...prev, hasHypothec: e.target.checked }))}
-                    className="w-4 h-4 accent-blue-600"
-                  />
+                    className="w-4 h-4 accent-blue-600" />
                   <label htmlFor="hasHypothec" className="text-sm font-semibold text-slate-700 cursor-pointer">
                     Tiene hipoteca asociada
                   </label>
                 </div>
 
-                {/* Campos hipoteca */}
                 <AnimatePresence>
                   {form.hasHypothec && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="overflow-hidden"
-                    >
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }} className="overflow-hidden space-y-3">
                       <div className="grid grid-cols-2 gap-4">
                         <Field label="Cuota mensual (€)">
-                          <input
-                            required
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="650"
-                            value={form.monthlyPayment}
-                            onChange={f('monthlyPayment')}
-                            className={inputCls}
-                          />
+                          <input required type="number" step="0.01" min="0" placeholder="650"
+                            value={form.monthlyPayment} onChange={f('monthlyPayment')} className={inputCls} />
                         </Field>
                         <Field label="Meses restantes">
-                          <input
-                            required
-                            type="number"
-                            step="1"
-                            min="0"
-                            placeholder="240"
-                            value={form.monthsRemaining}
-                            onChange={f('monthsRemaining')}
-                            className={inputCls}
-                          />
+                          <input required type="number" step="1" min="0" placeholder="240"
+                            value={form.monthsRemaining} onChange={f('monthsRemaining')} className={inputCls} />
                         </Field>
                       </div>
-                      {/* Preview capital pendiente */}
                       {form.monthlyPayment && form.monthsRemaining && (
-                        <p className="text-xs text-slate-500 mt-2 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
+                        <p className="text-xs text-slate-500 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
                           Capital pendiente estimado:{' '}
                           <span className="font-bold text-rose-600">
-                            {formatCurrency(
-                              parseFloat(form.monthlyPayment || '0') *
-                              parseInt(form.monthsRemaining || '0')
-                            )}
+                            {formatCurrency(parseFloat(form.monthlyPayment || '0') * parseInt(form.monthsRemaining || '0'))}
                           </span>
                         </p>
                       )}
@@ -327,11 +340,60 @@ export default function PropertySection({ user, onEquityChange }: { user: User; 
                   )}
                 </AnimatePresence>
 
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 transition-colors shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
-                >
+                {/* Separador alquiler */}
+                <div className="border-t border-slate-100 pt-2">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
+                    Ingresos y gastos del alquiler
+                  </p>
+                  <div className="space-y-3">
+                    <Field label="Alquiler mensual (€)">
+                      <input type="number" step="0.01" min="0" placeholder="800"
+                        value={form.monthlyRent} onChange={f('monthlyRent')} className={inputCls} />
+                    </Field>
+                    <div className="grid grid-cols-2 gap-4">
+                      <Field label="Seguro mensual (€)">
+                        <input type="number" step="0.01" min="0" placeholder="30"
+                          value={form.monthlyInsurance} onChange={f('monthlyInsurance')} className={inputCls} />
+                      </Field>
+                      <Field label="Comunidad mensual (€)">
+                        <input type="number" step="0.01" min="0" placeholder="50"
+                          value={form.monthlyCommunity} onChange={f('monthlyCommunity')} className={inputCls} />
+                      </Field>
+                    </div>
+
+                    {/* Preview cashflow */}
+                    {form.monthlyRent && (
+                      <div className="bg-slate-50 px-3 py-2 rounded-lg border border-slate-100 text-xs space-y-1">
+                        {(() => {
+                          const rent = parseFloat(form.monthlyRent || '0');
+                          const mortgage = form.hasHypothec ? parseFloat(form.monthlyPayment || '0') : 0;
+                          const insurance = parseFloat(form.monthlyInsurance || '0');
+                          const community = parseFloat(form.monthlyCommunity || '0');
+                          const cashflow = rent - mortgage - insurance - community;
+                          return (
+                            <>
+                              <div className="flex justify-between text-slate-500">
+                                <span>Ingresos</span><span className="font-bold text-emerald-600">+{formatCurrency(rent)}</span>
+                              </div>
+                              <div className="flex justify-between text-slate-500">
+                                <span>Gastos</span><span className="font-bold text-rose-600">-{formatCurrency(mortgage + insurance + community)}</span>
+                              </div>
+                              <div className="flex justify-between border-t border-slate-200 pt-1 font-bold">
+                                <span>Flujo neto</span>
+                                <span className={cashflow >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
+                                  {cashflow >= 0 ? '+' : ''}{formatCurrency(cashflow)}/mes
+                                </span>
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <button type="submit" disabled={isSaving}
+                  className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 transition-colors shadow-lg disabled:opacity-50 flex items-center justify-center gap-2">
                   {isSaving && <RefreshCcw size={16} className="animate-spin" />}
                   {isSaving ? 'Guardando...' : editingProperty ? 'Guardar cambios' : 'Añadir inmueble'}
                 </button>
@@ -346,25 +408,17 @@ export default function PropertySection({ user, onEquityChange }: { user: User; 
 
 // ─── Card de inmueble ─────────────────────────────────────────────────────────
 
-function PropertyCard({
-  stats: s,
-  onEdit,
-  onDelete,
-}: {
-  stats: PropertyStats;
-  onEdit: () => void;
-  onDelete: () => void;
+function PropertyCard({ stats: s, onEdit, onDelete }: {
+  stats: PropertyStats; onEdit: () => void; onDelete: () => void;
 }) {
   const isPositive = s.appreciation >= 0;
+  const cashflowPositive = s.monthlyCashflow >= 0;
+  const hasRental = s.monthlyIncome > 0;
 
   return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
+    <motion.div layout initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
-      className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col"
-    >
+      className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
       <div className="p-5 flex-1 space-y-4">
         {/* Cabecera */}
         <div className="flex justify-between items-start">
@@ -389,7 +443,7 @@ function PropertyCard({
           </div>
         </div>
 
-        {/* Valor y plusvalía */}
+        {/* Tasación y plusvalía */}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <p className="text-[10px] font-bold text-slate-400 uppercase">Tasación</p>
@@ -406,7 +460,7 @@ function PropertyCard({
           </div>
         </div>
 
-        {/* Detalles */}
+        {/* Detalles patrimoniales */}
         <div className="space-y-2 text-xs border-t border-slate-50 pt-3">
           <Row label="Precio de compra" value={formatCurrency(s.property.purchasePrice)} />
           <Row label="Patrimonio neto" value={formatCurrency(s.equity)} bold />
@@ -418,14 +472,41 @@ function PropertyCard({
             </>
           )}
         </div>
+
+        {/* Sección alquiler */}
+        {hasRental && (
+          <div className="space-y-2 text-xs border-t border-slate-100 pt-3">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Alquiler</p>
+            <Row label="Ingresos" value={`+${formatCurrency(s.monthlyIncome)}/mes`} valueClass="text-emerald-600" />
+            <Row label="Gastos" value={`-${formatCurrency(s.monthlyExpenses)}/mes`} valueClass="text-rose-500" />
+            <Row
+              label="Flujo neto"
+              value={`${s.monthlyCashflow >= 0 ? '+' : ''}${formatCurrency(s.monthlyCashflow)}/mes`}
+              bold
+              valueClass={cashflowPositive ? 'text-emerald-600' : 'text-rose-600'}
+            />
+            <div className="flex justify-between pt-1 border-t border-slate-50">
+              <span className="text-slate-500">Rent. bruta / neta</span>
+              <span className="font-bold text-slate-700">
+                {s.grossYield.toFixed(2)}% / <span className={s.netYield >= 0 ? 'text-emerald-600' : 'text-rose-600'}>{s.netYield.toFixed(2)}%</span>
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Pie */}
       <div className="bg-slate-50 px-5 py-3 flex justify-between items-center">
         <span className="text-[10px] font-bold text-slate-400">
-          {s.property.hasHypothec ? 'CON HIPOTECA' : 'SIN HIPOTECA'}
+          {hasRental
+            ? (cashflowPositive ? '✓ AUTOFINANCIADO' : '⚠ FLUJO NEGATIVO')
+            : s.property.hasHypothec ? 'CON HIPOTECA' : 'SIN HIPOTECA'}
         </span>
-        <div className={cn('w-2 h-2 rounded-full', isPositive ? 'bg-emerald-500' : 'bg-rose-500')} />
+        <div className={cn('w-2 h-2 rounded-full',
+          hasRental
+            ? (cashflowPositive ? 'bg-emerald-500' : 'bg-rose-500')
+            : (isPositive ? 'bg-emerald-500' : 'bg-rose-500')
+        )} />
       </div>
     </motion.div>
   );
@@ -445,43 +526,21 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function Row({
-  label,
-  value,
-  bold,
-  valueClass,
-}: {
-  label: string;
-  value: string;
-  bold?: boolean;
-  valueClass?: string;
+function Row({ label, value, bold, valueClass }: {
+  label: string; value: string; bold?: boolean; valueClass?: string;
 }) {
   return (
     <div className="flex justify-between">
       <span className="text-slate-500">{label}</span>
-      <span className={cn('font-semibold', bold && 'font-bold text-slate-900', valueClass)}>
-        {value}
-      </span>
+      <span className={cn('font-semibold', bold && 'font-bold text-slate-900', valueClass)}>{value}</span>
     </div>
   );
 }
 
-function SummaryCard({
-  label,
-  value,
-  sub,
-  color,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  color: 'blue' | 'emerald' | 'rose';
+function SummaryCard({ label, value, sub, color }: {
+  label: string; value: string; sub?: string; color: 'blue' | 'emerald' | 'rose';
 }) {
-  const colorMap = {
-    blue: 'text-blue-600',
-    emerald: 'text-emerald-600',
-    rose: 'text-rose-600',
-  };
+  const colorMap = { blue: 'text-blue-600', emerald: 'text-emerald-600', rose: 'text-rose-600' };
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-1">
       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</p>
