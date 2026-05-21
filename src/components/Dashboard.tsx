@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { User } from 'firebase/auth';
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
-import { Investment, Transaction, InvestmentSummary } from '../types';
+import { Investment, Transaction, InvestmentSummary, PropertyStats } from '../types';
 import { cn, formatCurrency, formatPercent } from '../lib/utils';
 import { Plus, TrendingUp, TrendingDown, Trash2, PieChart as PieChartIcon, Info, RefreshCcw, Landmark, Coins, Briefcase, History, Edit2, X, Calendar, Wallet } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -74,6 +74,7 @@ export default function Dashboard({ user }: { user: User }) {
 
   // Patrimonio inmobiliario (recibido desde PropertySection)
   const [propertyEquity, setPropertyEquity] = useState<number>(0);
+  const [propertyStats, setPropertyStats] = useState<PropertyStats[]>([]);
 
   // Search states
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -756,7 +757,7 @@ export default function Dashboard({ user }: { user: User }) {
         )}
 
       {/* Patrimonio Inmobiliario */}
-      <PropertySection user={user} onEquityChange={setPropertyEquity} />
+      <PropertySection user={user} onEquityChange={setPropertyEquity} onStatsChange={setPropertyStats} />
 
       {/* Add Modal */}
       <AnimatePresence>
@@ -934,6 +935,8 @@ export default function Dashboard({ user }: { user: User }) {
       <TotalWealthBanner
         investmentValue={globalStats.currentValue}
         propertyEquity={propertyEquity}
+        summaries={summaries}
+        propertyStats={propertyStats}
       />
     </div>
   );
@@ -1094,39 +1097,145 @@ const InvestmentCard: React.FC<{
 
 // ─── Banner Patrimonio Total ──────────────────────────────────────────────────
 
+const WEALTH_COLORS = [
+  '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981',
+  '#6366f1', '#f43f5e', '#06b6d4', '#84cc16', '#f97316',
+];
+
 function TotalWealthBanner({
   investmentValue,
   propertyEquity,
+  summaries,
+  propertyStats,
 }: {
   investmentValue: number;
   propertyEquity: number;
+  summaries: InvestmentSummary[];
+  propertyStats: PropertyStats[];
 }) {
+  const fmt = (v: number) =>
+    new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(v);
+
   const total = investmentValue + propertyEquity;
 
+  // Construir items para la rueda: un item por activo financiero + uno por inmueble
+  const items: { name: string; value: number; percent: number }[] = [];
+
+  for (const s of summaries) {
+    if (s.currentValue <= 0) continue;
+    const existing = items.find(i => i.name === (s.type === 'cash' ? s.name : s.symbol));
+    if (existing) {
+      existing.value += s.currentValue;
+    } else {
+      items.push({ name: s.type === 'cash' ? s.name : s.symbol, value: s.currentValue, percent: 0 });
+    }
+  }
+
+  for (const ps of propertyStats) {
+    if (ps.equity <= 0) continue;
+    items.push({ name: ps.property.name, value: ps.equity, percent: 0 });
+  }
+
+  // Calcular porcentajes
+  for (const item of items) {
+    item.percent = total > 0 ? (item.value / total) * 100 : 0;
+  }
+  items.sort((a, b) => b.value - a.value);
+
+  // SVG donut manual
+  const size = 180;
+  const cx = size / 2;
+  const cy = size / 2;
+  const R = 70;
+  const r = 44;
+
+  function polarToXY(angleDeg: number, radius: number) {
+    const rad = ((angleDeg - 90) * Math.PI) / 180;
+    return { x: cx + radius * Math.cos(rad), y: cy + radius * Math.sin(rad) };
+  }
+
+  function buildArc(startAngle: number, endAngle: number, outerR: number, innerR: number) {
+    const s1 = polarToXY(startAngle, outerR);
+    const e1 = polarToXY(endAngle, outerR);
+    const s2 = polarToXY(endAngle, innerR);
+    const e2 = polarToXY(startAngle, innerR);
+    const large = endAngle - startAngle > 180 ? 1 : 0;
+    return [
+      `M ${s1.x} ${s1.y}`,
+      `A ${outerR} ${outerR} 0 ${large} 1 ${e1.x} ${e1.y}`,
+      `L ${s2.x} ${s2.y}`,
+      `A ${innerR} ${innerR} 0 ${large} 0 ${e2.x} ${e2.y}`,
+      'Z',
+    ].join(' ');
+  }
+
+  let currentAngle = 0;
+  const arcs = items.map((item, i) => {
+    const sweep = (item.value / total) * 360;
+    const path = buildArc(currentAngle, currentAngle + sweep - 1, R, r);
+    currentAngle += sweep;
+    return { ...item, path, color: WEALTH_COLORS[i % WEALTH_COLORS.length] };
+  });
+
   return (
-    <div className="bg-slate-900 rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-      <div>
-        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
-          Patrimonio Neto Total
-        </p>
-        <p className="text-3xl font-black text-white tracking-tight">
-          {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(total)}
-        </p>
-      </div>
-      <div className="flex gap-6 sm:gap-8">
-        <div className="text-right">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Inversiones</p>
-          <p className="text-lg font-bold text-slate-200">
-            {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(investmentValue)}
+    <div className="bg-slate-900 rounded-2xl p-6 space-y-6">
+      {/* Fila superior: total + desglose rápido */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
+            Patrimonio Neto Total
           </p>
+          <p className="text-3xl font-black text-white tracking-tight">{fmt(total)}</p>
         </div>
-        <div className="text-right">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Inmobiliario</p>
-          <p className="text-lg font-bold text-slate-200">
-            {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(propertyEquity)}
-          </p>
+        <div className="flex gap-6 sm:gap-8">
+          <div className="text-right">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Inversiones</p>
+            <p className="text-lg font-bold text-slate-200">{fmt(investmentValue)}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Inmobiliario</p>
+            <p className="text-lg font-bold text-slate-200">{fmt(propertyEquity)}</p>
+          </div>
         </div>
       </div>
+
+      {/* Desglose con rueda */}
+      {items.length > 0 && (
+        <div className="border-t border-slate-800 pt-5 flex flex-col md:flex-row gap-6 items-center">
+          {/* Donut SVG */}
+          <div className="shrink-0">
+            <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+              {arcs.map((arc, i) => (
+                <path key={i} d={arc.path} fill={arc.color} opacity={0.9} />
+              ))}
+              <text x={cx} y={cy - 6} textAnchor="middle" fill="white"
+                fontSize="11" fontWeight="800" fontFamily="system-ui">
+                TOTAL
+              </text>
+              <text x={cx} y={cy + 10} textAnchor="middle" fill="#94a3b8"
+                fontSize="9" fontWeight="600" fontFamily="system-ui">
+                {fmt(total).replace('€', '').trim()}€
+              </text>
+            </svg>
+          </div>
+
+          {/* Leyenda */}
+          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
+            {arcs.map((arc, i) => (
+              <div key={i} className="flex items-center gap-3 bg-slate-800/50 rounded-xl px-3 py-2">
+                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: arc.color }} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-slate-200 truncate">{arc.name}</p>
+                  <p className="text-[10px] text-slate-400">{fmt(arc.value)}</p>
+                </div>
+                <span className="text-xs font-black text-slate-300 shrink-0">
+                  {arc.percent.toFixed(1)}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
