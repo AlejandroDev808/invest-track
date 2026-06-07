@@ -96,5 +96,28 @@ service cloud.firestore {
                       incoming().createdAt == existing().createdAt;
       allow delete: if isSignedIn() && isOwner(resource.data.ownerId);
     }
+
+    // --- Net worth snapshots ---
+    function isValidNetWorthSnapshot(data) {
+      return data.keys().hasAll(['ownerId', 'date', 'totalNetWorth', 'investmentValue', 'propertyEquity', 'createdAt']) &&
+             data.keys().size() == 6 &&
+             data.ownerId == request.auth.uid &&
+             data.date is string && data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+             data.totalNetWorth is number &&
+             data.investmentValue is number && data.investmentValue >= 0 &&
+             data.propertyEquity is number &&
+             data.createdAt is timestamp;
+    }
+
+    match /netWorthSnapshots/{snapId} {
+      allow list: if isSignedIn() && request.auth.uid != null;
+      allow get:  if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && isValidNetWorthSnapshot(incoming());
+      allow update: if isSignedIn() && isOwner(resource.data.ownerId) &&
+                      isValidNetWorthSnapshot(incoming()) &&
+                      incoming().ownerId == existing().ownerId &&
+                      incoming().date == existing().date;
+      allow delete: if isSignedIn() && isOwner(resource.data.ownerId);
+    }
   }
 }

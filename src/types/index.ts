@@ -46,6 +46,16 @@ export interface Property {
   updatedAt: any;
 }
 
+export interface NetWorthSnapshot {
+  id: string;
+  ownerId: string;
+  date: string;              // YYYY-MM-DD, también usado como parte del ID del documento
+  totalNetWorth: number;
+  investmentValue: number;
+  propertyEquity: number;
+  createdAt: any;
+}
+
 export interface PropertyStats {
   property: Property;
   debtRemaining: number;

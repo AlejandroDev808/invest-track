@@ -8,6 +8,7 @@ import { Plus, TrendingUp, TrendingDown, Trash2, PieChart as PieChartIcon, Info,
 import { motion, AnimatePresence } from 'motion/react';
 import StatsTable from './StatsTable';
 import PropertySection from './PropertySection';
+import NetWorthHistoryChart from './NetWorthHistoryChart';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import axios from 'axios';
 
@@ -939,6 +940,14 @@ export default function Dashboard({ user }: { user: User }) {
         propertyEquity={propertyEquity}
         summaries={summaries}
         propertyStats={propertyStats}
+      />
+
+      {/* Histórico de Patrimonio Neto */}
+      <NetWorthHistoryChart
+        user={user}
+        investmentValue={globalStats.currentValue}
+        propertyEquity={propertyEquity}
+        loading={loading}
       />
     </div>
   );
