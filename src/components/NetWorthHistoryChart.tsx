@@ -66,7 +66,9 @@ export default function NetWorthHistoryChart({
           isPositive ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
         )}>
           {isPositive ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-          {formatPercent(changePercent)}
+          <span>
+            {isPositive ? '+' : ''}{formatCurrency(change, 0)} / {isPositive ? '+' : ''}{formatPercent(changePercent)}
+          </span>
         </div>
       </div>
 
