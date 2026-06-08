@@ -942,10 +942,9 @@ export default function Dashboard({ user }: { user: User }) {
         propertyStats={propertyStats}
       />
 
-      {/* Histórico de Patrimonio Neto */}
+      {/* Histórico de Valor de Inversiones */}
       <NetWorthHistoryChart
         summaries={summaries}
-        propertyStats={propertyStats}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Timestamp } from 'firebase/firestore';
-import { InvestmentSummary, PropertyStats } from '../types';
+import { InvestmentSummary } from '../types';
 import { cn, formatCurrency, formatPercent } from '../lib/utils';
 import { TrendingUp, TrendingDown, LineChart as LineChartIcon } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer } from 'recharts';
@@ -13,19 +13,16 @@ function toMillis(value: any): number {
 
 export default function NetWorthHistoryChart({
   summaries,
-  propertyStats,
 }: {
   summaries: InvestmentSummary[];
-  propertyStats: PropertyStats[];
 }) {
-  // Reconstruye la evolución del patrimonio a partir de las fechas de creación
-  // de inversiones e inmuebles: se ordenan cronológicamente y se acumula su
-  // valor actual para obtener el patrimonio total en cada punto de la línea temporal.
+  // Reconstruye la evolución del valor de las inversiones financieras a partir
+  // de las fechas de creación de los documentos en `investments` (excluye
+  // inmuebles): se ordenan cronológicamente y se acumula su valor actual para
+  // obtener el valor total en cada punto de la línea temporal.
   const chartData = useMemo(() => {
-    const events = [
-      ...summaries.map(s => ({ date: toMillis(s.createdAt), value: s.currentValue })),
-      ...propertyStats.map(ps => ({ date: toMillis(ps.property.createdAt), value: ps.equity })),
-    ]
+    const events = summaries
+      .map(s => ({ date: toMillis(s.createdAt), value: s.currentValue }))
       .filter(e => e.date > 0)
       .sort((a, b) => a.date - b.date);
 
@@ -37,7 +34,7 @@ export default function NetWorthHistoryChart({
         total: cumulative,
       };
     });
-  }, [summaries, propertyStats]);
+  }, [summaries]);
 
   if (chartData.length < 2) return null;
 
@@ -61,7 +58,7 @@ export default function NetWorthHistoryChart({
           </div>
           <div>
             <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-              Evolución del Patrimonio Neto
+              Evolución de las Inversiones
             </p>
             <p className="text-2xl font-black text-slate-900 tracking-tight">{formatCurrency(last)}</p>
           </div>
@@ -102,7 +99,7 @@ export default function NetWorthHistoryChart({
             <Area
               type="monotone"
               dataKey="total"
-              name="Patrimonio Neto"
+              name="Valor Inversiones"
               stroke="#3b82f6"
               strokeWidth={2}
               fill="url(#netWorthGradient)"
