@@ -156,6 +156,7 @@ export async function getAssetInfo(symbol: string): Promise<AssetInfo> {
 }
 
 async function getDescription(symbol: string, name: string, type: string): Promise<string | null> {
+  console.log(`[asset-info-DEBUG] getDescription entrada: symbol="${symbol}"`);
   const cacheKey = symbol.toUpperCase();
   console.log(`[asset-info] getDescription called: symbol="${symbol}", name="${name}", type="${type}"`);
 
