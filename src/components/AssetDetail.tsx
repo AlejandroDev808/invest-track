@@ -180,6 +180,14 @@ export default function AssetDetail({ user }: { user: User }) {
                 </div>
               </div>
             </div>
+
+            {assetInfo?.description && (
+              <div className="mt-5 pt-5 border-t border-slate-100">
+                <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">
+                  {assetInfo.description}
+                </p>
+              </div>
+            )}
           </motion.div>
 
           {/* ── Sección 2: Cotización actual ── */}
