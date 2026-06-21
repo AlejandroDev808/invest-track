@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { TrendingUp, TrendingDown, ArrowUpDown, ArrowUp, ArrowDown, BarChart3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { InvestmentSummary } from '../types';
@@ -185,17 +186,17 @@ export default function StatsTable({ summaries }: StatsTableProps) {
                     >
                       {/* Activo */}
                       <td className="pl-5 pr-3 py-4">
-                        <div className="flex items-center gap-3">
+                        <Link to={`/asset/${encodeURIComponent(s.symbol)}`} className="flex items-center gap-3 group/link">
                           <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-slate-100 to-slate-50 border border-slate-100 flex items-center justify-center shrink-0">
                             <span className="text-[9px] font-black text-slate-500 tracking-tight">
                               {s.symbol.slice(0, 3).toUpperCase()}
                             </span>
                           </div>
                           <div className="min-w-0">
-                            <p className="text-sm font-bold text-slate-900 leading-tight truncate max-w-[140px]">{s.name}</p>
-                            <p className="text-[10px] font-bold text-slate-400 font-mono">{s.symbol}</p>
+                            <p className="text-sm font-bold text-slate-900 leading-tight truncate max-w-[140px] group-hover/link:text-blue-600 transition-colors">{s.name}</p>
+                            <p className="text-[10px] font-bold text-slate-400 font-mono group-hover/link:text-blue-400 transition-colors">{s.symbol}</p>
                           </div>
-                        </div>
+                        </Link>
                       </td>
 
                       {/* Cantidad */}

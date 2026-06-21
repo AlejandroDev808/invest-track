@@ -6,6 +6,7 @@ import { requireAuth } from './src/server/auth.middleware.js';
 import { globalRateLimit, apiRateLimit } from './src/server/rate-limit.middleware.js';
 import { getPriceWithFallbacks } from './src/server/prices.service.js';
 import { resolveIsin, searchSymbols } from './src/server/search.service.js';
+import { getAssetInfo } from './src/server/asset-info.service.js';
 
 const yf: any = (YahooFinance as any).default || YahooFinance;
 
@@ -68,6 +69,18 @@ async function startServer() {
       }
 
       res.json(results);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Info de activo — autenticado + rate limited
+  app.get("/api/asset-info", requireAuth, apiRateLimit, async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const symbol = typeof req.query.symbol === 'string' ? req.query.symbol.trim().toUpperCase().slice(0, 30) : '';
+      if (!symbol) return res.status(400).json({ error: 'Falta el parámetro symbol.' });
+      const info = await getAssetInfo(symbol);
+      res.json(info);
     } catch (err) {
       next(err);
     }
