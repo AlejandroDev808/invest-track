@@ -138,25 +138,44 @@ export async function fetchCoinGeckoPrice(symbol: string): Promise<number | null
 
 const CRYPTO_SYMBOLS = ['BTC', 'ETH', 'SOL', 'KAS', 'NEAR'];
 
+const priceCache = new Map<string, { price: number; ts: number }>();
+const CACHE_TTL = 60_000;
+
 export async function getPriceWithFallbacks(sym: string): Promise<number | null> {
+  const cached = priceCache.get(sym);
+  if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.price;
+
   const yDirect = await fetchYahooDirect(sym);
-  if (yDirect !== null) return yDirect;
+  if (yDirect !== null) {
+    priceCache.set(sym, { price: yDirect, ts: Date.now() });
+    return yDirect;
+  }
 
   const isCrypto = sym.includes('-') || sym.includes('=') || CRYPTO_SYMBOLS.some(c => sym.includes(c));
   if (isCrypto) {
-    const bPrice = await fetchBinancePrice(sym);
-    if (bPrice !== null) return bPrice;
-  }
+    const providers: Promise<number | null>[] = [fetchBinancePrice(sym)];
 
-  if (CRYPTO_SYMBOLS.some(c => sym.includes(c))) {
-    const cpPrice = await fetchCoinCapPrice(sym);
-    if (cpPrice !== null) return cpPrice;
-
-    if (['KAS', 'NEAR', 'SOL'].some(c => sym.includes(c))) {
-      const kcPrice = await fetchKuCoinPrice(sym);
-      if (kcPrice !== null) return kcPrice;
+    if (CRYPTO_SYMBOLS.some(c => sym.includes(c))) {
+      providers.push(fetchCoinCapPrice(sym));
+      if (['KAS', 'NEAR', 'SOL'].some(c => sym.includes(c))) {
+        providers.push(fetchKuCoinPrice(sym));
+      }
     }
+
+    providers.push(fetchCoinGeckoPrice(sym));
+
+    const results = await Promise.allSettled(providers);
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value !== null) {
+        priceCache.set(sym, { price: r.value, ts: Date.now() });
+        return r.value;
+      }
+    }
+
+    return null;
   }
 
-  return fetchCoinGeckoPrice(sym);
+  const cgPrice = await fetchCoinGeckoPrice(sym);
+  if (cgPrice !== null) priceCache.set(sym, { price: cgPrice, ts: Date.now() });
+  return cgPrice;
 }

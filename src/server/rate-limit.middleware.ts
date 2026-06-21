@@ -14,8 +14,7 @@ setInterval(() => {
 
 export function rateLimit(req: Request, res: Response, next: NextFunction) {
   const key = (req as any).uid
-    || (req.headers['x-forwarded-for'] as string)
-    || req.socket.remoteAddress
+    || req.ip
     || 'unknown';
   const now = Date.now();
   const entry = rateLimitMap.get(key);
