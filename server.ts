@@ -3,7 +3,7 @@ import path from "path";
 import YahooFinance from 'yahoo-finance2';
 import './src/server/firebase-admin.js'; // inicializa admin al arrancar
 import { requireAuth } from './src/server/auth.middleware.js';
-import { rateLimit } from './src/server/rate-limit.middleware.js';
+import { globalRateLimit, apiRateLimit } from './src/server/rate-limit.middleware.js';
 import { getPriceWithFallbacks } from './src/server/prices.service.js';
 import { resolveIsin, searchSymbols } from './src/server/search.service.js';
 
@@ -35,11 +35,14 @@ async function startServer() {
 
   app.use(express.json({ limit: '100kb' }));
 
+  // Rate limit global — 120 req/min por usuario/IP en todas las rutas
+  app.use(globalRateLimit);
+
   // Health check — público
   app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
 
   // Precios — autenticado + rate limited
-  app.get("/api/prices", requireAuth, rateLimit, async (req: Request, res: Response, next: NextFunction) => {
+  app.get("/api/prices", requireAuth, apiRateLimit, async (req: Request, res: Response, next: NextFunction) => {
     try {
       const symbolsQuery = typeof req.query.symbols === 'string' ? req.query.symbols : '';
       if (!symbolsQuery) return res.json({});
@@ -71,7 +74,7 @@ async function startServer() {
   });
 
   // Búsqueda — autenticada + rate limited
-  app.get("/api/search", requireAuth, rateLimit, async (req: Request, res: Response, next: NextFunction) => {
+  app.get("/api/search", requireAuth, apiRateLimit, async (req: Request, res: Response, next: NextFunction) => {
     try {
       const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 50) : '';
       if (q.length < 2) return res.json([]);
