@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { admin } from './firebase-admin.js';
 
 const YAHOO_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
@@ -124,6 +125,7 @@ export async function getAssetInfo(symbol: string): Promise<AssetInfo> {
 
 async function getDescription(symbol: string, name: string, type: string): Promise<string | null> {
   const cacheKey = symbol.toUpperCase();
+
   if (descriptionCache.has(cacheKey)) return descriptionCache.get(cacheKey)!;
 
   if (type === 'cash' || symbol === 'EFECTIVO') {
@@ -131,23 +133,47 @@ async function getDescription(symbol: string, name: string, type: string): Promi
     return CASH_DESCRIPTION;
   }
 
+  try {
+    const docRef = admin.firestore().collection('assetDescriptions').doc(cacheKey);
+    const docSnap = await docRef.get();
+    if (docSnap.exists) {
+      const text = docSnap.data()?.description as string;
+      if (text) {
+        descriptionCache.set(cacheKey, text);
+        return text;
+      }
+    }
+  } catch (e: any) {
+    console.error(`[asset-info] Firestore read error for ${cacheKey}:`, e.message);
+  }
+
   const isCrypto = type === 'cryptocurrency' || symbol.includes('-') || symbol.includes('=');
+  let description: string | null = null;
 
   if (isCrypto) {
-    const cgDesc = await fetchCoinGeckoDescription(symbol);
-    if (cgDesc) {
-      descriptionCache.set(cacheKey, cgDesc);
-      return cgDesc;
+    description = await fetchCoinGeckoDescription(symbol);
+  }
+
+  if (!description) {
+    description = await generateDescriptionWithGemini(symbol, name, type);
+  }
+
+  if (description) {
+    descriptionCache.set(cacheKey, description);
+    try {
+      await admin.firestore().collection('assetDescriptions').doc(cacheKey).set({
+        symbol: cacheKey,
+        name,
+        type,
+        description,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } catch (e: any) {
+      console.error(`[asset-info] Firestore write error for ${cacheKey}:`, e.message);
     }
   }
 
-  const aiDesc = await generateDescriptionWithGemini(symbol, name, type);
-  if (aiDesc) {
-    descriptionCache.set(cacheKey, aiDesc);
-    return aiDesc;
-  }
-
-  return null;
+  return description;
 }
 
 async function fetchCoinGeckoDescription(symbol: string): Promise<string | null> {

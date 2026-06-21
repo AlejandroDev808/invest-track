@@ -181,16 +181,24 @@ export default function AssetDetail({ user }: { user: User }) {
               </div>
             </div>
 
-            {assetInfo?.description && (
-              <div className="mt-5 pt-5 border-t border-slate-100">
-                <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">
-                  {assetInfo.description}
-                </p>
-              </div>
-            )}
           </motion.div>
 
-          {/* ── Sección 2: Cotización actual ── */}
+          {/* ── Sección 2: Sobre este activo ── */}
+          {assetInfo?.description && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.03 }}
+              className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6"
+            >
+              <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Sobre este activo</h2>
+              <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">
+                {assetInfo.description}
+              </p>
+            </motion.div>
+          )}
+
+          {/* ── Sección 3: Cotización actual ── */}
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
