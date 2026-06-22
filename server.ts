@@ -1,4 +1,5 @@
 import express, { Request, Response, NextFunction } from "express";
+import cors from "cors";
 import path from "path";
 import YahooFinance from 'yahoo-finance2';
 import './src/server/firebase-admin.js'; // inicializa admin al arrancar
@@ -16,6 +17,16 @@ async function startServer() {
   const app = express();
 
   app.set('trust proxy', 1);
+
+  // CORS — allow Capacitor Android (https://localhost) and the production frontend
+  app.use(cors({
+    origin: [
+      'https://localhost',
+      'https://seguidor-inversiones-1.onrender.com',
+    ],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control'],
+  }));
 
   // Security headers
   app.use((_req: Request, res: Response, next: NextFunction) => {

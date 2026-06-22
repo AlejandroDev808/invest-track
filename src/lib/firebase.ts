@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, User } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithCredential, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 
 const requiredEnvVars = [
   'VITE_FIREBASE_API_KEY',
@@ -35,9 +36,21 @@ export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
 export const loginWithGoogle = async () => {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const GoogleAuth = registerPlugin<{ signIn(): Promise<{ idToken: string }> }>('GoogleAuth');
+      const { idToken } = await GoogleAuth.signIn();
+      const credential = GoogleAuthProvider.credential(idToken);
+      return await signInWithCredential(auth, credential);
+    } catch (error: any) {
+      console.error("Native Google login failed", error);
+      if (error?.code === 'CANCELLED') return null;
+      alert(`Error al iniciar sesión nativa: ${error.message}`);
+      return null;
+    }
+  }
   try {
-    const result = await signInWithPopup(auth, googleProvider);
-    return result;
+    return await signInWithPopup(auth, googleProvider);
   } catch (error: any) {
     console.error("Login failed", error);
     alert(`Error al iniciar sesión: ${error.message}\n\nNota: Si estás en Vercel o Render, asegúrate de añadir el dominio de tu app en la consola de Firebase: Authentication -> Settings -> Authorized domains.`);

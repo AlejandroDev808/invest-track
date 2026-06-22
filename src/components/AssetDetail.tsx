@@ -10,7 +10,7 @@ import {
   Calendar, RefreshCcw, Globe, BarChart3, ImageOff,
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import axios from 'axios';
+import api from '../config/api';
 
 interface AssetInfo {
   symbol: string;
@@ -45,7 +45,7 @@ export default function AssetDetail({ user }: { user: User }) {
     (async () => {
       try {
         const token = auth.currentUser ? await getIdToken(auth.currentUser) : '';
-        const res = await axios.get('/api/asset-info', {
+        const res = await api.get('/api/asset-info', {
           params: { symbol },
           headers: { Authorization: `Bearer ${token}` },
         });

@@ -10,7 +10,7 @@ import StatsTable from './StatsTable';
 import PropertySection from './PropertySection';
 import NetWorthHistoryChart from './NetWorthHistoryChart';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import axios from 'axios';
+import api from '../config/api';
 
 enum OperationType {
   CREATE = 'create',
@@ -116,7 +116,7 @@ export default function Dashboard({ user }: { user: User }) {
       }
       
       const token = auth.currentUser ? await getIdToken(auth.currentUser) : '';
-      const response = await axios.get('/api/prices', { 
+      const response = await api.get('/api/prices', { 
         params: { symbols },
         headers: { 'Cache-Control': 'no-cache', Authorization: `Bearer ${token}` }
       });
@@ -142,7 +142,7 @@ export default function Dashboard({ user }: { user: User }) {
         console.log("[Search] Fetching results for:", newSymbol);
         try {
           const token = auth.currentUser ? await getIdToken(auth.currentUser) : '';
-          const response = await axios.get('/api/search', { params: { q: newSymbol }, headers: { Authorization: `Bearer ${token}` } });
+          const response = await api.get('/api/search', { params: { q: newSymbol }, headers: { Authorization: `Bearer ${token}` } });
           console.log("[Search] Results received:", response.data);
           setSearchResults(response.data || []);
         } catch (error) {
