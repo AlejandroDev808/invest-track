@@ -80,7 +80,7 @@ export default function App() {
               animate={{ opacity: 1 }}
               className="w-full"
             >
-              <nav className="bg-white border-b border-slate-200 px-4 py-3 flex justify-between items-center sticky top-0 z-50">
+              <nav className="bg-white border-b border-slate-200 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] flex justify-between items-center sticky top-0 z-50">
                 <div className="flex items-center gap-2">
                    <div className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center">
                       <Wallet size={18} />
@@ -94,7 +94,7 @@ export default function App() {
                   </div>
                   <button
                     onClick={logout}
-                    className="text-sm font-medium text-slate-500 hover:text-red-600 transition-colors"
+                    className="text-sm font-medium text-slate-500 hover:text-red-600 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center px-3"
                     id="logout-button"
                   >
                     Salir

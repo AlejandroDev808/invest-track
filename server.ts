@@ -22,7 +22,7 @@ async function startServer() {
   app.use(cors({
     origin: [
       'https://localhost',
-      'https://seguidor-inversiones-1.onrender.com',
+      'https://invest-track.onrender.com',
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control'],

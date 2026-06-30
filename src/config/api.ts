@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { Capacitor } from '@capacitor/core';
 
-const RENDER_BACKEND_URL = 'https://seguidor-inversiones-1.onrender.com';
+const RENDER_BACKEND_URL = 'https://invest-track.onrender.com';
 
 const API_BASE_URL: string =
   Capacitor.isNativePlatform()
